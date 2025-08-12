@@ -60,6 +60,38 @@ uvicorn app.main:app --reload
 pytest -q
 ```
 
+### Makefile shortcuts
+
+Common tasks:
+```bash
+# create venv and install deps
+make venv install
+
+# run service
+make run
+
+# run service in dev with reload
+make dev
+
+# run tests
+make test
+```
+
+### Docker
+
+Build and run the service using Docker:
+```bash
+# build image
+make docker-build
+
+# run container (exposes 8000)
+make docker-run
+# open http://127.0.0.1:8000/docs
+
+# run tests inside the container
+make docker-test
+```
+
 ### Example
 - Seeded data:
   - PUMA brand 40% off
