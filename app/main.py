@@ -5,6 +5,7 @@ from app.api.routes import router as discounts_router
 from app.db.seed import create_tables, seed_data
 from app.db.base import SessionLocal
 from app.core.errors import DiscountServiceError
+from app.core.config import settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -17,7 +18,7 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
 
-app = FastAPI(title="Discount Service", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.include_router(discounts_router)
 
 @app.get("/health")
