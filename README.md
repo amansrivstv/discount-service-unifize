@@ -95,6 +95,48 @@ A FastAPI-based discount service using SQLite, SQLAlchemy, Pydantic, and pytest.
 - Finally: bank offer applies a percentage on the subtotal after voucher.
 - All monetary results are quantized to 2 decimals using `ROUND_HALF_UP`.
 
+### Discount calculation sequence
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant C as Client
+  participant A as FastAPI (routes.py)
+  participant S as DiscountService
+  participant Cache as TTL Cache
+  participant D as DB (SQLAlchemy)
+
+  C->>A: POST /discounts/calculate
+  A->>S: calculate_cart_discounts(cart, customer, payment, voucher)
+  S->>Cache: get brand/category maps
+  alt cache miss
+    S->>D: SELECT brand_discounts, category_discounts
+    D-->>S: rows
+    S->>Cache: set brand/category
+  end
+  S->>S: apply brand, then category (per item)
+  opt voucher_code
+    S->>Cache: get voucher
+    alt cache miss
+      S->>D: SELECT voucher by code
+      D-->>S: row
+      S->>Cache: set voucher
+    end
+    S->>S: validate voucher -> compute voucher % on subtotal
+  end
+  opt bank offer
+    S->>Cache: get bank offers (bank, method)
+    alt cache miss
+      S->>D: SELECT bank_offers by bank+method
+      D-->>S: rows
+      S->>Cache: set bank offers
+    end
+    S->>S: compute bank % on (subtotal - voucher)
+  end
+  S-->>A: final_price + breakdown
+  A-->>C: 200 OK
+```
+
 ### Setup
 
 1) Create and activate a virtual environment
