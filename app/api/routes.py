@@ -80,6 +80,7 @@ async def calculate_discounts(
             ],
             "customer": {"id": "cust-1", "tier": "gold"},
             "payment_info": {"method": "CARD", "bank_name": "ICICI", "card_type": "CREDIT"},
+            "voucher_code": "SUPER69",
         },
     ),
     db: Session = Depends(get_db_session),
@@ -97,6 +98,7 @@ async def calculate_discounts(
             if payload.payment_info
             else None
         ),
+        voucher_code=payload.voucher_code,
     )
     return DiscountedPriceSchema(
         original_price=result.original_price,

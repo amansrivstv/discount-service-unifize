@@ -38,6 +38,19 @@ def test_multiple_discount_scenario(db_session):
     # Brand 40% => 600, Category 10% => 540, Bank 10% => 486
     assert discounted.final_price == Decimal("486.00")
 
+    # With voucher SUPER69:
+    # Brand 40% => 600, Category 10% => 540, Voucher 69% => 372.60 off -> 167.40,
+    # Bank 10% of 167.40 => 16.74, Final => 150.66
+    discounted_with_voucher = asyncio.run(
+        service.calculate_cart_discounts(
+            cart_items=cart_items,
+            customer=customer,
+            payment_info=payment_info,
+            voucher_code="SUPER69",
+        )
+    )
+    assert discounted_with_voucher.final_price == Decimal("150.66")
+
 
 def test_validate_voucher(db_session):
     service = DiscountService(db_session)
