@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import DiscountServiceError, ErrorCode
 from app.db.models import BankOffer, BrandDiscount, CategoryDiscount, Voucher
+from app.core.cache import SimpleTTLCache
 
 
 class BrandTier(str, Enum):
@@ -73,6 +74,7 @@ def _apply_percent(amount: Decimal, percent: int) -> Decimal:
 class DiscountService:
     def __init__(self, db: Session):
         self.db = db
+        self.cache = SimpleTTLCache(default_ttl_seconds=300)
 
     async def calculate_cart_discounts(
         self,
@@ -91,9 +93,15 @@ class DiscountService:
         subtotal_after_item_discounts = Decimal("0.00")
         applied: Dict[str, Decimal] = {}
 
-        # Preload discounts
-        brand_discounts: Dict[str, int] = {bd.brand.lower(): bd.discount_percent for bd in self.db.query(BrandDiscount).all()}
-        category_discounts: Dict[str, int] = {cd.category.lower(): cd.discount_percent for cd in self.db.query(CategoryDiscount).all()}
+        # Preload discounts (cached)
+        brand_discounts: Dict[str, int] = self.cache.get_or_set(
+            "brand_discounts",
+            lambda: {bd.brand.lower(): bd.discount_percent for bd in self.db.query(BrandDiscount).all()},
+        )
+        category_discounts: Dict[str, int] = self.cache.get_or_set(
+            "category_discounts",
+            lambda: {cd.category.lower(): cd.discount_percent for cd in self.db.query(CategoryDiscount).all()},
+        )
 
         for item in cart_items:
             unit_price = _to_decimal(item.product.base_price)
@@ -125,7 +133,10 @@ class DiscountService:
         # Apply voucher on subtotal after item-level discounts
         voucher_discount_total = Decimal("0.00")
         if voucher_code:
-            voucher: Voucher | None = self.db.query(Voucher).filter(Voucher.code == voucher_code).one_or_none()
+            voucher: Voucher | None = self.cache.get_or_set(
+                f"voucher:{voucher_code}",
+                lambda: self.db.query(Voucher).filter(Voucher.code == voucher_code).one_or_none(),
+            )
             if not voucher:
                 raise DiscountServiceError(ErrorCode.DISCOUNT_CODE_INVALID, "Discount code does not exist")
 
@@ -137,13 +148,16 @@ class DiscountService:
         # Bank offer on subtotal (after voucher)
         bank_discount_total = Decimal("0.00")
         if payment_info and payment_info.bank_name:
-            offers = (
-                self.db.query(BankOffer)
-                .filter(
-                    BankOffer.bank_name == payment_info.bank_name,
-                    BankOffer.payment_method == payment_info.method,
-                )
-                .all()
+            offers = self.cache.get_or_set(
+                f"bank_offers:{payment_info.bank_name}:{payment_info.method}",
+                lambda: (
+                    self.db.query(BankOffer)
+                    .filter(
+                        BankOffer.bank_name == payment_info.bank_name,
+                        BankOffer.payment_method == payment_info.method,
+                    )
+                    .all()
+                ),
             )
             for offer in offers:
                 if offer.card_type and payment_info.card_type and (offer.card_type.upper() != payment_info.card_type.upper()):
