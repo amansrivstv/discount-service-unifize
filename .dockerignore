@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+.venv/
+.env
+.env.*
+
+.pytest_cache/
+.git/
+.gitignore
+
+# local db files
+*.sqlite
+*.sqlite3
+*.db
+discounts.db
+
+# build artifacts
+build/
+dist/
+*.egg-info/
