@@ -54,6 +54,7 @@ class CalculateRequest(BaseModel):
     cart_items: List[CartItem]
     customer: CustomerProfile
     payment_info: Optional[PaymentInfo] = None
+    voucher_code: Optional[str] = None
 
 
 class ValidateCodeRequest(BaseModel):

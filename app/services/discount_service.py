@@ -79,6 +79,7 @@ class DiscountService:
         cart_items: List[CartItem],
         customer: CustomerProfile,
         payment_info: Optional[PaymentInfo] = None,
+        voucher_code: Optional[str] = None,
     ) -> DiscountedPrice:
         """
         Calculate final price after applying discount logic:
@@ -121,7 +122,19 @@ class DiscountService:
 
             subtotal_after_item_discounts += (final_unit_price * item.quantity)
 
-        # Bank offer on subtotal
+        # Apply voucher on subtotal after item-level discounts
+        voucher_discount_total = Decimal("0.00")
+        if voucher_code:
+            voucher: Voucher | None = self.db.query(Voucher).filter(Voucher.code == voucher_code).one_or_none()
+            if not voucher:
+                raise DiscountServiceError(ErrorCode.DISCOUNT_CODE_INVALID, "Discount code does not exist")
+
+            # Reuse validation rules
+            await self.validate_discount_code(voucher_code, cart_items, customer)
+
+            voucher_discount_total = _apply_percent(subtotal_after_item_discounts, voucher.discount_percent)
+
+        # Bank offer on subtotal (after voucher)
         bank_discount_total = Decimal("0.00")
         if payment_info and payment_info.bank_name:
             offers = (
@@ -135,12 +148,16 @@ class DiscountService:
             for offer in offers:
                 if offer.card_type and payment_info.card_type and (offer.card_type.upper() != payment_info.card_type.upper()):
                     continue
-                discount_amount = _apply_percent(subtotal_after_item_discounts, offer.discount_percent)
+                discount_amount = _apply_percent(subtotal_after_item_discounts - voucher_discount_total, offer.discount_percent)
                 bank_discount_total += discount_amount
                 applied_key = f"bank:{offer.bank_name}:{offer.discount_percent}%"
                 applied[applied_key] = applied.get(applied_key, Decimal("0.00")) + discount_amount
 
-        final_total = (subtotal_after_item_discounts - bank_discount_total).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if voucher_discount_total:
+            applied_key = f"voucher:{voucher_code}"
+            applied[applied_key] = applied.get(applied_key, Decimal("0.00")) + voucher_discount_total
+
+        final_total = (subtotal_after_item_discounts - voucher_discount_total - bank_discount_total).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
         return DiscountedPrice(
             original_price=original_total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
